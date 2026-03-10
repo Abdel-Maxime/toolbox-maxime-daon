@@ -556,23 +556,21 @@ export default function CSVMerger() {
         <div className="cm-panel" key="preview">
           <div style={{ display: "grid", gap: 8, marginBottom: 28 }}>
             <div className="cm-st">
-              <span className="cm-sti">📥</span>
               <span>{stats.filesCount} file{stats.filesCount > 1 ? "s" : ""} — <strong>{stats.totalInputRows.toLocaleString()}</strong> input rows</span>
             </div>
             {stats.encodingsCorrected > 0 && (
-              <div className="cm-st"><span className="cm-sti">🔧</span><span>Encoding fixed on {stats.encodingsCorrected} file{stats.encodingsCorrected > 1 ? "s" : ""}</span></div>
+              <div className="cm-st"><span>Encoding fixed on {stats.encodingsCorrected} file{stats.encodingsCorrected > 1 ? "s" : ""}</span></div>
             )}
             {(stats.trimmed > 0 || stats.emptyRemoved > 0) && (
-              <div className="cm-st"><span className="cm-sti">🧹</span><span>{stats.trimmed.toLocaleString()} spaces trimmed, {stats.emptyRemoved} empty rows removed</span></div>
+              <div className="cm-st"><span>{stats.trimmed.toLocaleString()} spaces trimmed, {stats.emptyRemoved} empty rows removed</span></div>
             )}
             {stats.dupesRemoved > 0 && (
-              <div className="cm-st"><span className="cm-sti">🔁</span><span>{stats.dupesRemoved.toLocaleString()} exact duplicates removed</span></div>
+              <div className="cm-st"><span>{stats.dupesRemoved.toLocaleString()} exact duplicates removed</span></div>
             )}
             {stats.fuzzyDupes > 0 && (
-              <div className="cm-st"><span className="cm-sti">〰️</span><span>{stats.fuzzyDupes} fuzzy duplicates ({fuzzyThreshold}% threshold)</span></div>
+              <div className="cm-st"><span>{stats.fuzzyDupes} fuzzy duplicates ({fuzzyThreshold}% threshold)</span></div>
             )}
             <div className="cm-st" style={{ background: "#dcfce7" }}>
-              <span className="cm-sti">✅</span>
               <span><strong>{stats.finalRows.toLocaleString()}</strong> unique rows</span>
             </div>
           </div>
