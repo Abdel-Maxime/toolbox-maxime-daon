@@ -5,7 +5,7 @@ import path from 'path'
 const BASE_URL = 'https://toolbox.maxime-daon.fr'
 
 function getRoutesFromFileSystem(): string[] {
-  const appDir = path.join(process.cwd(), 'app')
+  const appDir = path.join(process.cwd(), 'src/app')
 
   function scan(dir: string, base = ''): string[] {
     return fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
@@ -36,6 +36,10 @@ function getRoutesFromFileSystem(): string[] {
 }
 
 export default function sitemap(): MetadataRoute.Sitemap {
+  if (typeof window !== 'undefined') {
+    throw new Error('sitemap function should only be called on the server side.')
+  }
+
   const routes = getRoutesFromFileSystem()
 
   return routes.map(route => ({
