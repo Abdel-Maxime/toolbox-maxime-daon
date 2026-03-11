@@ -1,6 +1,7 @@
 "use client";
 import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import Papa from "papaparse";
+import jschardet from "jschardet";
 import _ from "lodash";
 
 /* ── String similarity (Dice coefficient) ── */
@@ -34,20 +35,34 @@ function detectDelimiter(text) {
 
 function detectEncoding(buffer) {
   const bytes = new Uint8Array(buffer);
-  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return "UTF-8 (BOM)";
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) return "UTF-16 LE";
-  const check = Math.min(bytes.length, 4096);
-  for (let i = 0; i < check; i++) {
-    if (bytes[i] >= 0x80 && bytes[i] <= 0x9f) return "Windows-1252";
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return { encoding: "UTF-8", label: "UTF-8 (BOM)" };
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return { encoding: "UTF-16LE", label: "UTF-16 LE" };
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return { encoding: "UTF-16BE", label: "UTF-16 BE" };
+  const sample = bytes.slice(0, 8192);
+  let binaryStr = "";
+  for (let i = 0; i < sample.length; i++) binaryStr += String.fromCharCode(sample[i]);
+  const detected = jschardet.detect(binaryStr);
+  const enc = (detected.encoding || "").toUpperCase();
+  const map = {
+    "ASCII": "UTF-8", "UTF-8": "UTF-8", "WINDOWS-1252": "windows-1252", "WINDOWS-1250": "windows-1250",
+    "WINDOWS-1251": "windows-1251", "WINDOWS-1254": "windows-1254", "WINDOWS-1256": "windows-1256",
+    "ISO-8859-1": "iso-8859-1", "ISO-8859-2": "iso-8859-2", "ISO-8859-5": "iso-8859-5",
+    "ISO-8859-7": "iso-8859-7", "ISO-8859-8": "iso-8859-8", "ISO-8859-9": "iso-8859-9",
+    "ISO-8859-15": "iso-8859-15", "MACROMAN": "macintosh", "IBM866": "ibm866", "KOI8-R": "koi8-r",
+    "UTF-16LE": "utf-16le", "UTF-16BE": "utf-16be", "SHIFT_JIS": "shift_jis", "EUC-JP": "euc-jp",
+    "GB2312": "gb18030", "GB18030": "gb18030", "BIG5": "big5", "EUC-KR": "euc-kr", "TIS-620": "windows-874",
+  };
+  let decoderName = "utf-8", label = enc || "UTF-8";
+  for (const [key, val] of Object.entries(map)) { if (enc.includes(key)) { decoderName = val; label = key; break; } }
+  if (detected.confidence < 0.5 && decoderName !== "utf-8") {
+    try { new TextDecoder("utf-8", { fatal: true }).decode(sample); return { encoding: "utf-8", label: "UTF-8" }; } catch {}
   }
-  try { new TextDecoder("utf-8", { fatal: true }).decode(bytes.slice(0, check)); return "UTF-8"; }
-  catch { return "Windows-1252"; }
+  return { encoding: decoderName, label };
 }
 
 function decodeBuffer(buffer, encoding) {
-  if (encoding.startsWith("Windows") || encoding === "Latin-1") return new TextDecoder("windows-1252").decode(buffer);
-  if (encoding === "UTF-16 LE") return new TextDecoder("utf-16le").decode(buffer);
-  return new TextDecoder("utf-8").decode(buffer);
+  try { return new TextDecoder(encoding, { fatal: false }).decode(buffer); }
+  catch { return new TextDecoder("utf-8", { fatal: false }).decode(buffer); }
 }
 
 function formatSize(bytes) {
@@ -57,19 +72,36 @@ function formatSize(bytes) {
 }
 
 function delimLabel(d) {
-  if (d === ",") return "comma ,";
-  if (d === ";") return "semicolon ;";
-  if (d === "\t") return "TAB";
-  if (d === "|") return "pipe |";
-  return d;
+  if (d === ",") return "comma ,"; if (d === ";") return "semicolon ;";
+  if (d === "\t") return "TAB"; if (d === "|") return "pipe |"; return d;
 }
 
 /* ── Icons ── */
-const IcoUp = () => <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>;
+const IcoUp = () => <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>;
 const IcoX = () => <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>;
 const IcoChk = () => <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>;
 const IcoLeft = () => <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" /></svg>;
 const IcoDl = () => <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12M12 16.5V3" /></svg>;
+const IcoChev = ({ open }) => <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" style={{ transition: "transform .2s", transform: open ? "rotate(180deg)" : "rotate(0)" }}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>;
+
+/* ── Accordion section ── */
+function Section({ title, summary, defaultOpen = true, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="cm-section">
+      <button className="cm-section-head" onClick={() => setOpen(o => !o)} type="button">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="cm-section-title">{title}</div>
+          {!open && summary && <div className="cm-section-sum">{summary}</div>}
+        </div>
+        <IcoChev open={open} />
+      </button>
+      <div className="cm-section-body" style={{ display: open ? "block" : "none" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 /* ═══════════════════════════════════════════════
    MAIN COMPONENT
@@ -77,7 +109,7 @@ const IcoDl = () => <svg width="18" height="18" fill="none" viewBox="0 0 24 24" 
 const STEPS = ["import", "config", "preview", "export"];
 const STEP_LABELS = ["Import", "Configure", "Preview", "Export"];
 
-export default function CSVMerger2() {
+export default function CSVMerger() {
   const [files, setFiles] = useState([]);
   const [step, setStep] = useState("import");
   const [processing, setProcessing] = useState(false);
@@ -148,15 +180,15 @@ export default function CSVMerger2() {
       if (file.size === 0) { setError(`"${file.name}" is empty.`); continue; }
       try {
         const buffer = await file.arrayBuffer();
-        const encoding = detectEncoding(buffer);
+        const { encoding, label: encLabel } = detectEncoding(buffer);
         const text = decodeBuffer(buffer, encoding);
         const delimiter = detectDelimiter(text);
         const parsed = Papa.parse(text, { header: true, delimiter, skipEmptyLines: true, dynamicTyping: false });
         if (!parsed.data.length) { setError(`"${file.name}" — unrecognized format.`); continue; }
         added.push({
-          id: Date.now() + Math.random(), name: file.name, size: file.size, encoding,
-          encodingCorrected: !encoding.startsWith("UTF-8"), delimiter,
-          rows: parsed.data.length, columns: parsed.meta.fields || [], data: parsed.data,
+          id: Date.now() + Math.random(), name: file.name, size: file.size,
+          encoding: encLabel, encodingCorrected: encoding !== "utf-8" && encoding !== "UTF-8",
+          delimiter, rows: parsed.data.length, columns: parsed.meta.fields || [], data: parsed.data,
         });
       } catch { setError(`"${file.name}" — read error.`); }
     }
@@ -268,61 +300,155 @@ export default function CSVMerger2() {
 
   const stepIdx = STEPS.indexOf(step);
 
-  /* ═══════════════════════════════════════════ RENDER ═══════════════════════════════════════════ */
+  const conflictLabels = { first: "Keep first file", last: "Keep last file", both: "Keep both rows" };
+  const cleanCount = Object.values(cleanOpts).filter(Boolean).length;
+
+  /* ═══════════════════════════════════ RENDER ═══════════════════════════════════ */
   return (
-    <div style={{ fontFamily: "'DM Sans', -apple-system, sans-serif", maxWidth: 860, margin: "0 auto", padding: "0 16px", color: "#1a1a2e" }}>
+    <div className="cm-root">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
-        .cm-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;transition:all .3s}
+
+        .cm-root{font-family:'DM Sans',-apple-system,sans-serif;max-width:860px;margin:0 auto;padding:0 16px;color:#1a1a2e}
+
+        /* ── Stepper ── */
+        .cm-stepper{display:flex;align-items:center;justify-content:center;margin-bottom:28px;gap:0}
+        .cm-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;transition:all .3s;flex-shrink:0}
         .cm-dot.a{background:#1a1a2e;color:#fff}.cm-dot.d{background:#22c55e;color:#fff}.cm-dot.p{background:#e5e5e5;color:#999}
-        .cm-drop{border:2px dashed #d1d5db;border-radius:12px;padding:48px 24px;text-align:center;cursor:pointer;transition:all .25s;background:#fafafa}
+        .cm-step-label{font-size:11px;font-weight:500;margin-top:4px}
+        .cm-step-line{width:48px;height:2px;margin:0 8px;margin-bottom:18px;border-radius:1px;flex-shrink:0}
+
+        /* ── Dropzone ── */
+        .cm-drop{border:2px dashed #d1d5db;border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;transition:all .25s;background:#fafafa}
         .cm-drop:hover,.cm-drop.ov{border-color:#1a1a2e;background:#f0f0f8}
-        .cm-card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;margin-top:8px;display:flex;justify-content:space-between;align-items:flex-start;transition:all .2s}
+
+        /* ── File cards ── */
+        .cm-card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-top:8px;display:flex;justify-content:space-between;align-items:flex-start;transition:all .2s;gap:8px}
         .cm-card:hover{border-color:#c5c5d0;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+        .cm-card-info{flex:1;min-width:0}
+        .cm-card-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+        .cm-card-meta{font-size:12px;color:#888;margin-top:5px;display:flex;gap:12px;flex-wrap:wrap}
+
+        /* ── Badges ── */
         .cm-bg{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px}
         .cm-bg-ok{background:#dcfce7;color:#166534}.cm-bg-w{background:#fef3c7;color:#92400e}
-        .cm-b{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border-radius:8px;border:none;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:all .2s}
+
+        /* ── Buttons ── */
+        .cm-b{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 20px;border-radius:8px;border:none;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
         .cm-bp{background:#1a1a2e;color:#fff}.cm-bp:hover{background:#2a2a4e}.cm-bp:disabled{background:#ccc;cursor:not-allowed}
         .cm-bs{background:#fff;color:#1a1a2e;border:1px solid #d1d5db}.cm-bs:hover{background:#f5f5f5}
         .cm-bg2{background:transparent;color:#666;padding:8px 12px}.cm-bg2:hover{color:#1a1a2e}
-        .cm-chk{display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:14px}
-        .cm-chk input[type="checkbox"]{width:16px;height:16px;accent-color:#1a1a2e;cursor:pointer}
-        .cm-r{display:flex;align-items:center;gap:10px;padding:6px 0;cursor:pointer;font-size:14px}
-        .cm-r input[type="radio"]{width:15px;height:15px;accent-color:#1a1a2e;cursor:pointer}
-        .cm-sel{font-family:'DM Sans',sans-serif;font-size:14px;padding:8px 32px 8px 12px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='%23666' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+
+        /* ── Form elements ── */
+        .cm-chk{display:flex;align-items:flex-start;gap:10px;padding:7px 0;cursor:pointer;font-size:14px}
+        .cm-chk input[type="checkbox"]{width:16px;height:16px;accent-color:#1a1a2e;cursor:pointer;margin-top:2px;flex-shrink:0}
+        .cm-r{display:flex;align-items:flex-start;gap:10px;padding:6px 0;cursor:pointer;font-size:14px}
+        .cm-r input[type="radio"]{width:15px;height:15px;accent-color:#1a1a2e;cursor:pointer;margin-top:2px;flex-shrink:0}
+        .cm-sel{font-family:'DM Sans',sans-serif;font-size:14px;padding:8px 32px 8px 12px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='%23666' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;width:100%;max-width:400px}
         .cm-sl{width:100%;accent-color:#1a1a2e;cursor:pointer}
+
+        /* ── Accordion sections ── */
+        .cm-section{border:1px solid #e5e7eb;border-radius:10px;margin-bottom:10px;overflow:hidden;background:#fff}
+        .cm-section-head{width:100%;display:flex;align-items:center;gap:12px;padding:14px 16px;background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:left}
+        .cm-section-head:hover{background:#fafafa}
+        .cm-section-title{font-size:14px;font-weight:600;color:#1a1a2e}
+        .cm-section-sum{font-size:12px;color:#888;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .cm-section-body{padding:0 16px 16px}
+
+        /* ── Table ── */
+        .cm-tbl-wrap{overflow-x:auto;border:1px solid #e5e7eb;border-radius:10px;-webkit-overflow-scrolling:touch}
         .cm-tbl{width:100%;border-collapse:collapse;font-size:13px}
         .cm-tbl th{background:#f5f5f7;font-weight:600;text-align:left;padding:8px 12px;border-bottom:2px solid #e5e7eb;font-family:'DM Mono',monospace;font-size:12px;white-space:nowrap}
-        .cm-tbl td{padding:7px 12px;border-bottom:1px solid #f0f0f0;font-family:'DM Mono',monospace;font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .cm-tbl td{padding:7px 12px;border-bottom:1px solid #f0f0f0;font-family:'DM Mono',monospace;font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .cm-tbl tr:hover td{background:#fafafa}
-        .cm-st{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;background:#f8f8fc;font-size:14px}
-        .cm-sti{font-size:18px;flex-shrink:0;width:32px;text-align:center}
+
+        /* ── Stats ── */
+        .cm-st{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:#f8f8fc;font-size:13px}
+        .cm-sti{font-size:16px;flex-shrink:0;width:28px;text-align:center}
+
+        /* ── Progress ── */
         .cm-pb{width:100%;height:4px;background:#e5e5e5;border-radius:4px;overflow:hidden}
         .cm-pf{height:100%;background:#1a1a2e;border-radius:4px;transition:width .3s}
-        .cm-t{font-size:15px;font-weight:600;margin-bottom:12px;color:#1a1a2e}
-        .cm-s{font-size:13px;color:#666;margin-bottom:16px}
-        .cm-m{font-family:'DM Mono',monospace}
-        .cm-err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:10px 14px;border-radius:8px;font-size:13px;margin-top:12px}
 
+        /* ── Misc ── */
+        .cm-m{font-family:'DM Mono',monospace}
+        .cm-err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:10px 14px;border-radius:8px;font-size:13px;margin-top:10px}
         .cm-panel{animation:cmIn .35s ease both}
         @keyframes cmIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+        .cm-foot{display:flex;justify-content:space-between;align-items:center;margin-top:24px;padding-top:18px;border-top:1px solid #f0f0f0;gap:12px}
 
-        .cm-foot{display:flex;justify-content:space-between;align-items:center;margin-top:28px;padding-top:20px;border-top:1px solid #f0f0f0}
+        /* ── Summary bar ── */
+        .cm-summary{background:#f8f8fc;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#666;display:flex;gap:14px;flex-wrap:wrap}
+
+        /* ═══ RESPONSIVE ═══ */
+        @media (max-width: 640px) {
+          .cm-root{padding:0 12px}
+
+          /* Stepper compact */
+          .cm-stepper{margin-bottom:20px}
+          .cm-dot{width:24px;height:24px;font-size:11px}
+          .cm-step-label{font-size:10px}
+          .cm-step-line{width:28px;margin:0 4px;margin-bottom:16px}
+
+          /* Dropzone */
+          .cm-drop{padding:32px 16px}
+          .cm-drop svg{width:24px;height:24px}
+
+          /* Cards */
+          .cm-card{padding:10px 12px}
+          .cm-card-meta{gap:8px;font-size:11px}
+
+          /* Buttons */
+          .cm-b{padding:10px 16px;font-size:13px}
+          .cm-foot{flex-wrap:wrap}
+          .cm-foot .cm-b{flex:1;min-width:0}
+          .cm-foot .cm-bg2{flex:0 0 auto}
+
+          /* Sections */
+          .cm-section-head{padding:12px 14px}
+          .cm-section-body{padding:0 14px 14px}
+
+          /* Table cells tighter */
+          .cm-tbl th,.cm-tbl td{padding:6px 8px;font-size:11px}
+          .cm-tbl td{max-width:120px}
+
+          /* Stats */
+          .cm-st{padding:8px 12px;font-size:12px;gap:8px}
+          .cm-sti{font-size:14px;width:24px}
+
+          /* Summary */
+          .cm-summary{font-size:12px;gap:8px;padding:8px 12px}
+
+          /* Select full width */
+          .cm-sel{max-width:100%;font-size:13px}
+
+          /* Export done */
+          .cm-export-done{padding:32px 0 !important}
+
+          /* Radio/check text */
+          .cm-chk,.cm-r{font-size:13px}
+        }
+
+        @media (max-width: 380px) {
+          .cm-step-label{display:none}
+          .cm-step-line{width:20px;margin-bottom:0}
+          .cm-dot{width:22px;height:22px;font-size:10px}
+        }
       `}</style>
 
       {/* ── Stepper ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 32 }}>
+      <div className="cm-stepper">
         {STEPS.map((s, i) => (
           <div key={s} style={{ display: "flex", alignItems: "center" }}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
               <div className={`cm-dot ${i < stepIdx ? "d" : i === stepIdx ? "a" : "p"}`}>
                 {i < stepIdx ? <IcoChk /> : i + 1}
               </div>
-              <span style={{ fontSize: 11, fontWeight: 500, color: i <= stepIdx ? "#1a1a2e" : "#aaa" }}>
+              <span className="cm-step-label" style={{ color: i <= stepIdx ? "#1a1a2e" : "#aaa" }}>
                 {STEP_LABELS[i]}
               </span>
             </div>
-            {i < 3 && <div style={{ width: 48, height: 2, background: i < stepIdx ? "#22c55e" : "#e5e5e5", margin: "0 8px", marginBottom: 18, borderRadius: 1 }} />}
+            {i < 3 && <div className="cm-step-line" style={{ background: i < stepIdx ? "#22c55e" : "#e5e5e5" }} />}
           </div>
         ))}
       </div>
@@ -337,33 +463,33 @@ export default function CSVMerger2() {
             onClick={() => fileInputRef.current?.click()}>
             <input ref={fileInputRef} type="file" accept=".csv" multiple style={{ display: "none" }}
               onChange={e => { handleFiles(e.target.files); e.target.value = ""; }} />
-            <div style={{ color: "#888", marginBottom: 12, display: "flex", justifyContent: "center" }}><IcoUp /></div>
+            <div style={{ color: "#888", marginBottom: 10, display: "flex", justifyContent: "center" }}><IcoUp /></div>
             <div style={{ fontSize: 15, fontWeight: 500, color: "#444" }}>Drop your CSV files here</div>
-            <div style={{ fontSize: 13, color: "#999", marginTop: 4 }}>or click to browse</div>
+            <div style={{ fontSize: 13, color: "#999", marginTop: 4 }}>or tap to browse</div>
           </div>
 
           {error && <div className="cm-err">{error}</div>}
 
           {files.length > 0 && (
-            <div style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 12 }}>
               {files.map(f => (
                 <div key={f.id} className="cm-card">
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div className="cm-card-info">
+                    <div className="cm-card-top">
                       <span className="cm-m" style={{ fontWeight: 500, fontSize: 13 }}>{f.name}</span>
                       <span style={{ fontSize: 12, color: "#999" }}>{formatSize(f.size)}</span>
                       {f.encodingCorrected
                         ? <span className="cm-bg cm-bg-w">⚠ {f.encoding} → UTF-8</span>
                         : <span className="cm-bg cm-bg-ok">✓ {f.encoding}</span>}
                     </div>
-                    <div style={{ fontSize: 12, color: "#888", marginTop: 6, display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    <div className="cm-card-meta">
                       <span>{f.rows.toLocaleString()} rows</span>
-                      <span>{f.columns.length} columns</span>
-                      <span>Delimiter: {delimLabel(f.delimiter)}</span>
+                      <span>{f.columns.length} cols</span>
+                      <span>Delim: {delimLabel(f.delimiter)}</span>
                     </div>
                   </div>
                   <button onClick={e => { e.stopPropagation(); removeFile(f.id); }}
-                    style={{ background: "none", border: "none", cursor: "pointer", color: "#ccc", padding: 4 }}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "#ccc", padding: 4, flexShrink: 0 }}
                     onMouseEnter={e => e.currentTarget.style.color = "#ef4444"}
                     onMouseLeave={e => e.currentTarget.style.color = "#ccc"}>
                     <IcoX />
@@ -381,25 +507,29 @@ export default function CSVMerger2() {
         </div>
       )}
 
-      {/* ═══ STEP 2 — CONFIG ═══ */}
+      {/* ═══ STEP 2 — CONFIG (accordion) ═══ */}
       {step === "config" && (
         <div className="cm-panel" key="config">
 
-          {/* Summary bar */}
-          <div style={{ background: "#f8f8fc", borderRadius: 10, padding: "10px 16px", marginBottom: 24, fontSize: 13, color: "#666", display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div className="cm-summary">
             <span><strong>{files.length}</strong> file{files.length > 1 ? "s" : ""}</span>
             <span>{files.reduce((s, f) => s + f.rows, 0).toLocaleString()} total rows</span>
-            <span>{(files.length === 1 ? allColumnsList : allColumns).length} {files.length > 1 ? "common " : ""}columns</span>
+            <span>{selectableCols.length} {files.length > 1 ? "common " : ""}columns</span>
           </div>
 
           {/* Key column */}
-          <div style={{ marginBottom: 24 }}>
-            <div className="cm-t">Key column for deduplication</div>
-            <div className="cm-s">Pick the column that uniquely identifies each row.</div>
+          <Section
+            title="Key column"
+            summary={noKeyColumn ? "Full row deduplication" : keyColumn ? `${keyColumn} — ${columnUniqueness[keyColumn] ?? "?"}% unique` : "—"}
+            defaultOpen={true}
+          >
+            <div style={{ fontSize: 13, color: "#666", marginBottom: 10 }}>
+              Pick the column that uniquely identifies each row.
+            </div>
             {allColumns.length === 0 && files.length > 1 ? (
-              <div className="cm-err">No common columns found. Check headers or use full-row dedup.</div>
+              <div className="cm-err" style={{ margin: 0 }}>No common columns found. Check headers or use full-row dedup.</div>
             ) : (
-              <select className="cm-sel" style={{ width: "100%", maxWidth: 400 }}
+              <select className="cm-sel"
                 value={noKeyColumn ? "__none" : (keyColumn || "")}
                 onChange={e => {
                   if (e.target.value === "__none") { setNoKeyColumn(true); setKeyColumn(null); }
@@ -409,17 +539,20 @@ export default function CSVMerger2() {
                 <option value="__none">No key column — deduplicate on full row</option>
               </select>
             )}
-          </div>
+          </Section>
 
           {/* Cleaning */}
-          <div style={{ marginBottom: 24 }}>
-            <div className="cm-t">Auto-cleaning</div>
+          <Section
+            title="Auto-cleaning"
+            summary={`${cleanCount} option${cleanCount > 1 ? "s" : ""} enabled${cleanOpts.fuzzy ? ` · fuzzy ${fuzzyThreshold}%` : ""}`}
+            defaultOpen={true}
+          >
             {[
-              ["trim", "Trim whitespace", "Remove leading/trailing spaces in every cell"],
-              ["normalizeCase", "Normalize case", "Lowercase for comparison only (export unchanged)"],
-              ["removeEmpty", "Remove empty rows", "Rows where all cells are blank"],
-              ["removeDupes", "Remove exact duplicates", "Based on the selected key column"],
-              ["fuzzy", "Fuzzy deduplication", "Detect near-duplicates (typos, extra spaces…)"],
+              ["trim", "Trim whitespace", "Remove leading/trailing spaces"],
+              ["normalizeCase", "Normalize case", "Lowercase for comparison only"],
+              ["removeEmpty", "Remove empty rows", "All cells blank"],
+              ["removeDupes", "Remove exact duplicates", "Based on key column"],
+              ["fuzzy", "Fuzzy deduplication", "Near-duplicates (typos, spaces…)"],
             ].map(([key, label, desc]) => (
               <label key={key} className="cm-chk">
                 <input type="checkbox" checked={cleanOpts[key]}
@@ -431,33 +564,41 @@ export default function CSVMerger2() {
               </label>
             ))}
             {cleanOpts.fuzzy && (
-              <div style={{ marginLeft: 26, marginTop: 8, padding: 16, background: "#f8f8fc", borderRadius: 10 }}>
+              <div style={{ marginLeft: 26, marginTop: 8, padding: "14px", background: "#f8f8fc", borderRadius: 10 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
-                  Similarity threshold: <span className="cm-m">{fuzzyThreshold}%</span>
+                  Similarity: <span className="cm-m">{fuzzyThreshold}%</span>
                 </div>
                 <input type="range" className="cm-sl" min={70} max={99}
                   value={fuzzyThreshold} onChange={e => setFuzzyThreshold(Number(e.target.value))} />
                 <div style={{ fontSize: 12, color: "#888", marginTop: 6, fontStyle: "italic" }}>{fuzzyLabel}</div>
               </div>
             )}
-          </div>
+          </Section>
 
-          {/* Columns */}
+          {/* Columns — only if different */}
           {!columnsAreSame && files.length > 1 && (
-            <div style={{ marginBottom: 24 }}>
-              <div className="cm-t">Column handling</div>
-              <div className="cm-s">Files have different columns.</div>
-              <div style={{ display: "flex", gap: 16 }}>
+            <Section
+              title="Column handling"
+              summary={keepAllCols ? "Keeping all columns" : `Common only (${allColumns.length})`}
+              defaultOpen={false}
+            >
+              <div style={{ fontSize: 13, color: "#666", marginBottom: 8 }}>Files have different columns.</div>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                 <label className="cm-r"><input type="radio" checked={keepAllCols} onChange={() => setKeepAllCols(true)} /> Keep all columns</label>
                 <label className="cm-r"><input type="radio" checked={!keepAllCols} onChange={() => setKeepAllCols(false)} /> Common only ({allColumns.length})</label>
               </div>
-            </div>
+            </Section>
           )}
 
           {/* Conflict */}
-          <div style={{ marginBottom: 24 }}>
-            <div className="cm-t">Value conflicts</div>
-            <div className="cm-s">When two rows share the same key but differ in other columns.</div>
+          <Section
+            title="Value conflicts"
+            summary={conflictLabels[conflictMode]}
+            defaultOpen={false}
+          >
+            <div style={{ fontSize: 13, color: "#666", marginBottom: 8 }}>
+              When two rows share the same key but differ in other columns.
+            </div>
             {[
               ["first", "Keep first file", "Priority to the file listed first"],
               ["last", "Keep last file", "Priority to the last file added"],
@@ -468,16 +609,19 @@ export default function CSVMerger2() {
                 <div><div style={{ fontWeight: 500 }}>{label}</div><div style={{ fontSize: 12, color: "#888" }}>{desc}</div></div>
               </label>
             ))}
-          </div>
+          </Section>
 
-          {/* Delimiter out */}
-          <div style={{ marginBottom: 8 }}>
-            <div className="cm-t">Export delimiter</div>
-            <div style={{ display: "flex", gap: 16 }}>
+          {/* Delimiter */}
+          <Section
+            title="Export delimiter"
+            summary={delimiterOut === "," ? "Comma ," : "Semicolon ; (Excel EU)"}
+            defaultOpen={false}
+          >
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
               <label className="cm-r"><input type="radio" checked={delimiterOut === ","} onChange={() => setDelimiterOut(",")} /> <span className="cm-m">,</span>&nbsp;comma</label>
               <label className="cm-r"><input type="radio" checked={delimiterOut === ";"} onChange={() => setDelimiterOut(";")} /> <span className="cm-m">;</span>&nbsp;semicolon (Excel EU)</label>
             </div>
-          </div>
+          </Section>
 
           {error && <div className="cm-err">{error}</div>}
 
@@ -500,7 +644,7 @@ export default function CSVMerger2() {
       {/* ═══ STEP 3 — PREVIEW ═══ */}
       {step === "preview" && result && stats && (
         <div className="cm-panel" key="preview">
-          <div style={{ display: "grid", gap: 8, marginBottom: 28 }}>
+          <div style={{ display: "grid", gap: 8, marginBottom: 24 }}>
             <div className="cm-st">
               <span className="cm-sti">📥</span>
               <span>{stats.filesCount} file{stats.filesCount > 1 ? "s" : ""} — <strong>{stats.totalInputRows.toLocaleString()}</strong> input rows</span>
@@ -515,7 +659,7 @@ export default function CSVMerger2() {
               <div className="cm-st"><span className="cm-sti">🔁</span><span>{stats.dupesRemoved.toLocaleString()} exact duplicates removed</span></div>
             )}
             {stats.fuzzyDupes > 0 && (
-              <div className="cm-st"><span className="cm-sti">〰️</span><span>{stats.fuzzyDupes} fuzzy duplicates ({fuzzyThreshold}% threshold)</span></div>
+              <div className="cm-st"><span className="cm-sti">〰️</span><span>{stats.fuzzyDupes} fuzzy duplicates ({fuzzyThreshold}%)</span></div>
             )}
             <div className="cm-st" style={{ background: "#dcfce7" }}>
               <span className="cm-sti">✅</span>
@@ -523,11 +667,11 @@ export default function CSVMerger2() {
             </div>
           </div>
 
-          <div style={{ marginBottom: 24 }}>
-            <div className="cm-t">Preview — first 10 rows</div>
-            <div style={{ overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: 10 }}>
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Preview — first 10 rows</div>
+            <div className="cm-tbl-wrap">
               <table className="cm-tbl">
-                <thead><tr><th style={{ color: "#aaa", width: 40 }}>#</th>{result.columns.map(c => <th key={c}>{c}</th>)}</tr></thead>
+                <thead><tr><th style={{ color: "#aaa", width: 36 }}>#</th>{result.columns.map(c => <th key={c}>{c}</th>)}</tr></thead>
                 <tbody>
                   {result.data.slice(0, 10).map((row, i) => (
                     <tr key={i}><td style={{ color: "#ccc" }}>{i + 1}</td>{result.columns.map(c => <td key={c}>{row[c]}</td>)}</tr>
@@ -543,9 +687,9 @@ export default function CSVMerger2() {
           </div>
 
           <div className="cm-foot">
-            <button className="cm-b cm-bg2" onClick={() => setStep("config")}><IcoLeft /> Edit settings</button>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button className="cm-b cm-bs" onClick={downloadReport}>Report .txt</button>
+            <button className="cm-b cm-bg2" onClick={() => setStep("config")}><IcoLeft /> Edit</button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="cm-b cm-bs" onClick={downloadReport}>Report</button>
               <button className="cm-b cm-bp" onClick={downloadCSV}><IcoDl /> Download CSV</button>
             </div>
           </div>
@@ -554,15 +698,15 @@ export default function CSVMerger2() {
 
       {/* ═══ STEP 4 — EXPORT DONE ═══ */}
       {step === "export" && (
-        <div className="cm-panel" key="export" style={{ textAlign: "center", padding: "48px 0" }}>
-          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#dcfce7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: 28 }}>✓</div>
-          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>File downloaded</div>
-          <div style={{ fontSize: 14, color: "#888", marginBottom: 28 }}>
+        <div className="cm-panel cm-export-done" key="export" style={{ textAlign: "center", padding: "48px 0" }}>
+          <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#dcfce7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px", fontSize: 26 }}>✓</div>
+          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>File downloaded</div>
+          <div style={{ fontSize: 14, color: "#888", marginBottom: 24 }}>
             {stats?.finalRows.toLocaleString()} rows · {result?.columns.length} columns · {delimLabel(delimiterOut)}
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             <button className="cm-b cm-bs" onClick={() => setStep("preview")}>← Review</button>
-            <button className="cm-b cm-bs" onClick={downloadReport}>Download report</button>
+            <button className="cm-b cm-bs" onClick={downloadReport}>Report</button>
             <button className="cm-b cm-bp" onClick={reset}>New merge</button>
           </div>
         </div>

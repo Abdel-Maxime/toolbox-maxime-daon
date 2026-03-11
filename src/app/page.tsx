@@ -1,6 +1,6 @@
 
 import { SimpleHeader } from "@/components/ui/simple-header";
-import CSVmerger from "@/components/csvmerger";
+import CSVmerger2 from "@/components/csvmerger2";
 import { Footer7 } from "@/components/ui/footer";
 import { Metadata } from "next";
 import { BackgroundRippleEffect } from "@/components/ui/background-ripple-effect";
@@ -17,13 +17,13 @@ export default function Home() {
       <SimpleHeader />
       <section className="section-lg max-w-screen overflow-hidden relative">
           <BackgroundRippleEffect />
-          <div className="container-layout z-100 max-w-[85svw] flex flex-col justify-center gap-8 items-center py-10">
+          <div className="relative container-layout z-100 max-w-[85svw] flex flex-col justify-center gap-8 items-center py-10">
             <h1 className="text-center">CSV Merge & Clean
             </h1>
             <p className="text-center">
             Drop your messy CSV exports — get back one clean, deduplicated file. No signup, 100% local.
             </p>
-            <CSVmerger />
+            <CSVmerger2 />
             
           </div>  
       </section>
