@@ -9,8 +9,12 @@ export function SimpleHeader() {
 
 	const links = [
 		{
-			label: 'CSV merge & clean',
+			label: 'Home',
 			href: '/',
+		},
+		{
+			label: 'CSV merge & clean',
+			href: '/csv-merger-free-tool',
 		},
 		{
 			label: 'Images batch processing',
@@ -18,12 +22,12 @@ export function SimpleHeader() {
 		},
 		{
 			label: 'My website',
-			href: '#',
+			href: 'https://maxime-daon.fr',
 		},
 	];
 
 	return (
-		<header className="bg-background/95 supports-backdrop-filter:bg-background/80 sticky top-0 z-50 w-full border-b backdrop-blur-lg">
+		<header className="bg-background/95 z-100 supports-backdrop-filter:bg-background/80 sticky top-0 z-100 w-full border-b backdrop-blur-lg">
 			<nav className="mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-4">
 				<div className="flex items-center gap-2">
 					<p className="font-mono text-lg font-bold">Toolbox by Maxime Daon</p>
