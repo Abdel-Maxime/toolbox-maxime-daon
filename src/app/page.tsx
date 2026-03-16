@@ -34,7 +34,7 @@ export default function Home() {
             <TextAnimate className="text-center w-[60%]" animation="blurIn" as="p">
             Find here all my tools, made for you, to make your life easier. From CSV merging and cleaning, to image batch processing, and more to come soon... No signup, 100% free and local.
             </TextAnimate>
-            <div>
+            <div className='hidden'>
               <ShimmerButton>
                 Explore the tools
               </ShimmerButton>
